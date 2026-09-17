@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<title>Visitor Induction & Sign-In</title>
+<style>
+  :root {
+    --brand: #1b5e3f;
+    --brand-dark: #154b32;
+    --brand-soft: #e8efeb;
+    --focus: #b9d3c5;
+    --bg: #f2f5f1;
+    --card: #ffffff;
+    --ink: #1a201c;
+    --muted: #5d6862;
+    --line: #d5ddd6;
+    --danger: #b3261e;
+    --danger-soft: #fdecea;
+    --ok: #1b5e3f;
+    --radius: 16px;
+  }
+  @supports (color: color-mix(in srgb, red, blue)) {
+    :root {
+      --brand-dark: color-mix(in srgb, var(--brand) 80%, #000);
+      --brand-soft: color-mix(in srgb, var(--brand) 10%, #fff);
+      --focus: color-mix(in srgb, var(--brand) 35%, #fff);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
+  .top { display: flex; align-items: center; gap: 12px; padding: 4px 4px 16px; }
+  .logo { height: 44px; width: auto; max-width: 140px; object-fit: contain; }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: -0.01em; color: var(--brand); }
+  .brand-sub { font-size: 14px; color: var(--muted); }
+  .card { background: var(--card); border-radius: var(--radius); padding: 22px 20px; box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 20px -12px rgba(0,0,0,.15); }
+  h1, h2 { margin: 0 0 6px; line-height: 1.25; letter-spacing: -0.01em; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 22px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  .steps { display: flex; gap: 6px; margin: 0 0 18px; }
+  .steps span { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+  .steps span.on { background: var(--brand); }
+  .step-label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .field { display: block; margin: 0 0 16px; }
+  .field > span { display: block; font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+  .field > span em { font-weight: 400; color: var(--muted); font-style: normal; }
+  input[type="text"], input[type="tel"], input[type="email"], select, textarea {
+    width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: #fff;
+    border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; min-height: 50px;
+    -webkit-appearance: none; appearance: none;
+  }
+  select { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' fill='none' stroke='%235d6862' stroke-width='2' stroke-linecap='round'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; }
+  input:focus, select:focus, textarea:focus { outline: 3px solid var(--focus); border-color: var(--brand); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font: inherit; font-size: 15px; padding: 10px 14px; min-height: 44px; border-radius: 999px;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; font: inherit; font-size: 16px; min-height: 48px; border-radius: 12px;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  .q { padding: 14px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; padding-top: 4px; }
+  .q p { margin-bottom: 10px; font-weight: 600; }
+  .hint { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--brand-soft); color: var(--brand-dark); font-size: 14px; }
+  .hint p { font-weight: 400; margin: 0; }
+  .rules { list-style: none; padding: 0; margin: 0 0 12px; counter-reset: rule; }
+  .rules li { border-top: 1px solid var(--line); }
+  .rules li:first-child { border-top: 0; }
+  .rules label { display: flex; gap: 12px; align-items: flex-start; padding: 12px 4px; cursor: pointer; }
+  .rules label::before { counter-increment: rule; content: counter(rule); flex: 0 0 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: var(--brand-dark); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .rules input { flex: 0 0 24px; width: 24px; height: 24px; margin: 0; accent-color: var(--brand); margin-top: 1px; }
+  .rules span { flex: 1; font-size: 15px; }
+  .rules li.done label { color: var(--muted); }
+  .count { font-size: 14px; color: var(--muted); margin: 0 0 14px; }
+  .note { background: var(--brand-soft); color: var(--brand-dark); border-radius: 12px; padding: 12px 14px; font-size: 15px; margin: 0 0 16px; }
+  .ack { border-left: 4px solid var(--brand); padding: 6px 0 6px 14px; margin: 0 0 18px; font-size: 15px; }
+  .sigbox { position: relative; border: 1.5px dashed var(--line); border-radius: 12px; background: #fff; height: 180px; }
+  .sigbox canvas { width: 100%; height: 100%; display: block; touch-action: none; border-radius: 12px; }
+  .sigbox .line { position: absolute; left: 20px; right: 20px; bottom: 34px; border-top: 1px solid var(--line); pointer-events: none; }
+  .sigbox .x { position: absolute; left: 20px; bottom: 36px; color: var(--muted); font-size: 14px; pointer-events: none; }
+  .sigbox .clear { position: absolute; right: 10px; top: 8px; font: inherit; font-size: 14px; background: none; border: 0; color: var(--brand); cursor: pointer; padding: 6px 8px; }
+  .error { background: var(--danger-soft); color: var(--danger); border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; font-size: 15px; }
+  .error ul { margin: 0; padding-left: 18px; }
+  .actions { display: flex; gap: 10px; margin-top: 8px; }
+  .btn {
+    font: inherit; font-size: 17px; font-weight: 600; min-height: 52px; border-radius: 12px; padding: 12px 18px;
+    border: 1.5px solid transparent; cursor: pointer; flex: 1; -webkit-tap-highlight-color: transparent;
+  }
+  .btn.primary { background: var(--brand); color: #fff; }
+  .btn.primary:active { background: var(--brand-dark); }
+  .btn.primary:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: #fff; color: var(--brand); border-color: var(--line); flex: 0 0 auto; }
+  .btn.block { width: 100%; margin-bottom: 10px; }
+  .prep { margin: 18px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  .prep ul { margin: 6px 0 0; padding-left: 18px; }
+  .done-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; margin: 4px auto 14px; }
+  .centre { text-align: center; }
+  .badge { border: 1.5px solid var(--line); border-radius: 14px; overflow: hidden; margin: 6px 0 16px; }
+  .badge-top { background: var(--brand); color: #fff; display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+  .badge-body { padding: 14px; }
+  .badge-no { font-size: 34px; font-weight: 800; letter-spacing: .02em; color: var(--brand); line-height: 1.1; }
+  .badge-name { font-size: 20px; font-weight: 700; margin: 2px 0 10px; }
+  .badge-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px dashed var(--line); font-size: 15px; }
+  .badge-row span { color: var(--muted); }
+  .badge-row b { text-align: right; }
+  .foot { text-align: center; color: var(--muted); font-size: 12px; padding: 18px 8px 0; }
+  .busy { pointer-events: none; opacity: .7; }
+  /* QR poster */
+  .poster { background: #fff; border-radius: var(--radius); padding: 36px 28px; text-align: center; border: 2px solid var(--brand); }
+  .poster-brand { color: var(--brand); font-weight: 800; font-size: 28px; letter-spacing: -0.01em; }
+  .poster h1 { font-size: 34px; margin: 8px 0 8px; }
+  .poster .lead { font-size: 18px; color: var(--muted); margin: 0 auto 22px; max-width: 420px; }
+  .qr { width: min(70%, 320px); margin: 0 auto 18px; }
+  .qr svg { width: 100%; height: auto; display: block; }
+  .poster-url { font-size: 12px; color: var(--muted); word-break: break-all; margin: 0 0 18px; }
+  .poster-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; font-weight: 600; color: var(--brand-dark); margin: 0 0 24px; }
+  @media print {
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .no-print, .top, .foot { display: none !important; }
+    .poster { border: 0; padding: 40px 20px; }
+    .poster h1 { font-size: 44px; }
+    .qr { width: 60%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <img id="logo" class="logo" alt="" hidden>
+    <div>
+      <div class="brand" id="brand"></div>
+      <div class="brand-sub" id="brandSub"></div>
+    </div>
+  </header>
+
+  <!-- Loading (only used when the page is hosted outside Google and fetches its settings) -->
+  <section class="view card" id="view-loading" hidden>
+    <h2>One moment…</h2>
+    <p class="muted" id="loadingMsg">Loading the sign-in form.</p>
+    <button class="btn primary block" type="button" id="btn-retry" hidden>Try again</button>
+  </section>
+
+  <!-- Welcome -->
+  <section class="view card" id="view-welcome" hidden>
+    <h1>Welcome</h1>
+    <p id="welcomeMsg" class="muted"></p>
+    <button class="btn primary block" type="button" data-go="details">Sign in as a visitor</button>
+    <button class="btn ghost block" type="button" data-go="signout">I'm leaving – sign me out</button>
+    <div class="prep">
+      You'll need:
+      <ul>
+        <li>the name of the person you're visiting</li>
+        <li>photo ID to show reception</li>
+        <li>about two minutes</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Step 1: details -->
+  <section class="view card" id="view-details" hidden>
+    <div class="step-label">Step 1 of 4</div>
+    <div class="steps"><span class="on"></span><span></span><span></span><span></span></div>
+    <h2>Your details</h2>
+    <p class="muted small">All fields are required unless marked optional.</p>
+    <label class="field"><span>Full name</span><input type="text" id="f-name" autocomplete="name" autocapitalize="words" placeholder="First and last name"></label>
+    <label class="field"><span>Company / organisation</span><input type="text" id="f-company" autocomplete="organization" placeholder='Company name, or "Private"'></label>
+    <label class="field"><span>Mobile number</span><input type="tel" id="f-phone" autocomplete="tel" inputmode="tel" placeholder="08x xxx xxxx or +66…"></label>
+    <label class="field"><span>Email <em id="emailOpt">(optional)</em></span><input type="email" id="f-email" autocomplete="email" inputmode="email" autocapitalize="off" placeholder="name@company.com"></label>
+    <div class="field">
+      <span>Purpose of visit</span>
+      <div class="chips" id="purposes" role="group"></div>
+      <input type="text" id="f-purposeDetail" placeholder="Please describe your visit" style="margin-top:10px" hidden>
+    </div>
+    <label class="field"><span>Who are you visiting?</span><select id="f-host"></select></label>
+    <input type="text" id="f-hostOther" placeholder="Name of the person you're visiting" style="margin:-8px 0 16px" hidden>
+    <div class="field">
+      <span>Areas you'll be entering</span>
+      <div class="chips" id="areas" role="group"></div>
+    </div>
+    <label class="field"><span>Vehicle registration <em>(optional)</em></span><input type="text" id="f-rego" autocapitalize="characters" placeholder="If you're parking on site"></label>
+    <div class="error" id="err-details" hidden></div>
+    <div class="actions">
+      <button class="btn ghost" type="button" data-go="welcome">Back</button>
+      <button class="btn primary" type="button" id="btn-details">Continue</button>
+    </div>
+  </section>
+
+  <!-- Step 2: declarations -->
+  <section class="view card" id="view-declarations" hidden>
+    <div class="step-label">Step 2 of 4</div>
+    <div class="steps"><span class="on"></span><span class="on"></span><span></span><span></span></div>
+    <h2>Two quick questions</h2>
+    <p class="muted small">These help us protect the crop and keep everyone safe.</p>
+    <div class="q">
+      <p>Have you visited another plant-growing facility, or handled live plants, in the last 24 hours?</p>
+      <div class="seg" data-name="visitedGrow"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div>
+      <div class="hint" id="hint-visitedGrow" hidden><p>Thanks for letting us know. Please tell your host before entering any growing areas.</p></div>
+    </div>
+    <div class="q">
+      <p>Are you currently unwell, or do you have any open cuts or wounds?</p>
+      <div class="seg" data-name="unwell"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div>
+      <div class="hint" id="hint-unwell" hidden><p>Thanks. Your host may ask you to stay out of cultivation and processing areas today.</p></div>
+    </div>
+    <div class="error" id="err-declarations" hidden></div>
+    <div class="actions">
+      <button class="btn ghost" type="button" data-go="details">Back</button>
+      <button class="btn primary" type="button" id="btn-declarations">Continue</button>
+    </div>
+  </section>
+
+  <!-- Step 3: site rules -->
+  <section class="view card" id="view-rules" hidden>
+    <div class="step-label">Step 3 of 4</div>
+    <div class="steps"><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div>
+    <h2>Site rules</h2>
+    <p class="muted small">Please read each rule and tick to confirm you understand it.</p>
+    <ol class="rules" id="rules"></ol>
+    <div class="note">Emergency assembly point: <strong id="assembly"></strong></div>
+    <p class="count" id="rulesCount"></p>
+    <div class="actions">
+      <button class="btn ghost" type="button" data-go="declarations">Back</button>
+      <button class="btn primary" type="button" id="btn-rules" disabled>Continue</button>
+    </div>
+  </section>
+
+  <!-- Step 4: sign -->
+  <section class="view card" id="view-sign" hidden>
+    <div class="step-label">Step 4 of 4</div>
+    <div class="steps"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div>
+    <h2>Sign to confirm</h2>
+    <p class="ack">I have read and understood the <span class="siteName"></span> Visitor Site Rules and agree to comply with them for the duration of my visit.</p>
+    <label class="field"><span>Type your full name</span><input type="text" id="f-typed" autocomplete="off" autocapitalize="words" placeholder="Full name"></label>
+    <div class="field" id="sigField">
+      <span>Sign with your finger</span>
+      <div class="sigbox">
+        <canvas id="sig"></canvas>
+        <div class="line"></div><div class="x">×</div>
+        <button type="button" class="clear" id="sigClear">Clear</button>
+      </div>
+    </div>
+    <div class="error" id="err-sign" hidden></div>
+    <div class="actions">
+      <button class="btn ghost" type="button" data-go="rules">Back</button>
+      <button class="btn primary" type="button" id="btn-submit">Sign in</button>
+    </div>
+  </section>
+
+  <!-- Signed in -->
+  <section class="view card" id="view-done" hidden>
+    <div class="done-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+    <h2 class="centre">You're signed in</h2>
+    <p class="centre muted" id="doneMsg"></p>
+    <div class="badge">
+      <div class="badge-top"><span class="siteName"></span><span>Visitor</span></div>
+      <div class="badge-body">
+        <div class="badge-no" id="badgeNo"></div>
+        <div class="badge-name" id="badgeName"></div>
+        <div class="badge-row"><span>Company</span><b id="badgeCompany"></b></div>
+        <div class="badge-row"><span>Host</span><b id="badgeHost"></b></div>
+        <div class="badge-row"><span>Signed in</span><b id="badgeTime"></b></div>
+      </div>
+    </div>
+    <p class="small muted">Show this screen to reception. When you leave, scan the QR code again and choose “I'm leaving”, or tell reception.</p>
+    <button class="btn primary block" type="button" data-go="welcome">Done</button>
+  </section>
+
+  <!-- Sign out -->
+  <section class="view card" id="view-signout" hidden>
+    <h2>Sign out</h2>
+    <p class="muted">Enter your visitor number (for example V0012) or the full name you signed in with.</p>
+    <label class="field"><span>Visitor number or full name</span><input type="text" id="f-signout" autocomplete="off" placeholder="V0012 or Jane Citizen"></label>
+    <div class="error" id="err-signout" hidden></div>
+    <div class="actions">
+      <button class="btn ghost" type="button" data-go="welcome">Back</button>
+      <button class="btn primary" type="button" id="btn-signout">Sign out</button>
+    </div>
+  </section>
+
+  <section class="view card" id="view-signout-done" hidden>
+    <div class="done-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+    <h2 class="centre">Thanks for visiting</h2>
+    <p class="centre" id="signoutMsg"></p>
+    <p class="centre muted small">Please return your visitor pass to reception before you leave.</p>
+    <button class="btn primary block" type="button" data-go="welcome">Done</button>
+  </section>
+
+  <!-- QR poster (open the app URL with ?page=qr) -->
+  <section class="view poster" id="view-qr" hidden>
+    <div class="poster-brand siteName"></div>
+    <h1>Visitors: scan to sign in</h1>
+    <p class="lead">Every visitor must complete the induction and sign in before entering the site.</p>
+    <div class="qr" id="qr"></div>
+    <p class="poster-url" id="qrUrl"></p>
+    <div class="poster-rules"><span>No photos</span><span>PPE must be worn</span><span>Stay with your host</span></div>
+    <button class="btn primary no-print" type="button" onclick="window.print()">Print this poster</button>
+    <p class="muted small no-print" style="margin-top:12px">Print at A4, laminate, and place at reception and the front gate. The QR code opens the sign-in app – no account needed.</p>
+  </section>
+
+  <footer class="foot" id="privacy"></footer>
+</div>
+
+<script>
+// The Apps Script deployment this page talks to. If you ever create a NEW deployment
+// (a different /exec address), update this one line and re-upload the page.
+window.APP = { api: "https://script.google.com/macros/s/AKfycbyg3WGonglnVpvK7bTStV_skdkZwuTW3vfxKRFKdVE3esXDuveZRvljVnK2gF-OMxkLbQ/exec", siteName: "Cana Australasia" };
+</script>
+<script>
+/*
+ * Minimal QR code encoder (byte mode, error-correction level M) written for the
+ * visitor induction app so the QR poster needs no external library.
+ * Implements the ISO/IEC 18004 encoding steps: data bit stream, Reed–Solomon
+ * error correction over GF(256), block interleaving, module placement,
+ * mask selection by penalty score, format and version information.
+ *
+ * makeQR(text) -> { size, modules }   modules[row][col] === true means dark
+ * qrToSvg(qr, cellSize, margin) -> SVG markup string
+ */
+function makeQR(text) {
+  var ECC_PER_BLOCK = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+  var BLOCKS = [1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+  var ECL_BITS = 0; // level M
+
+  // --- UTF-8 bytes ---------------------------------------------------------
+  var bytes = [];
+  var enc = encodeURIComponent(text);
+  for (var i = 0; i < enc.length; i++) {
+    if (enc.charAt(i) === '%') { bytes.push(parseInt(enc.substr(i + 1, 2), 16)); i += 2; }
+    else bytes.push(enc.charCodeAt(i));
+  }
+
+  // --- choose the smallest version that fits ------------------------------
+  function rawModules(ver) {
+    var r = (16 * ver + 128) * ver + 64;
+    if (ver >= 2) {
+      var n = Math.floor(ver / 7) + 2;
+      r -= (25 * n - 10) * n - 55;
+      if (ver >= 7) r -= 36;
+    }
+    return r;
+  }
+  function dataCodewords(ver) {
+    return Math.floor(rawModules(ver) / 8) - ECC_PER_BLOCK[ver - 1] * BLOCKS[ver - 1];
+  }
+  var version = -1;
+  for (var v = 1; v <= 40; v++) {
+    var countBits = v <= 9 ? 8 : 16;
+    if (4 + countBits + bytes.length * 8 <= dataCodewords(v) * 8) { version = v; break; }
+  }
+  if (version < 0) throw new Error('Text is too long for a QR code');
+  var size = version * 4 + 17;
+
+  // --- bit stream ----------------------------------------------------------
+  var bits = [];
+  function push(val, len) { for (var b = len - 1; b >= 0; b--) bits.push((val >>> b) & 1); }
+  push(4, 4);
+  push(bytes.length, version <= 9 ? 8 : 16);
+  bytes.forEach(function (byte) { push(byte, 8); });
+  var capacity = dataCodewords(version) * 8;
+  push(0, Math.min(4, capacity - bits.length));
+  while (bits.length % 8 !== 0) bits.push(0);
+  for (var pad = 0xEC; bits.length < capacity; pad ^= 0xEC ^ 0x11) push(pad, 8);
+  var data = [];
+  for (var k = 0; k < bits.length; k += 8) {
+    var byteVal = 0;
+    for (var j = 0; j < 8; j++) byteVal = (byteVal << 1) | bits[k + j];
+    data.push(byteVal);
+  }
+
+  // --- Reed–Solomon error correction --------------------------------------
+  function gfMul(x, y) {
+    var z = 0;
+    for (var b = 7; b >= 0; b--) {
+      z = (z << 1) ^ ((z >>> 7) * 0x11D);
+      z ^= ((y >>> b) & 1) * x;
+    }
+    return z;
+  }
+  function rsGenerator(degree) {
+    var result = [];
+    for (var d = 0; d < degree - 1; d++) result.push(0);
+    result.push(1);
+    var root = 1;
+    for (var a = 0; a < degree; a++) {
+      for (var c = 0; c < result.length; c++) {
+        result[c] = gfMul(result[c], root);
+        if (c + 1 < result.length) result[c] ^= result[c + 1];
+      }
+      root = gfMul(root, 2);
+    }
+    return result;
+  }
+  function rsRemainder(block, gen) {
+    var result = gen.map(function () { return 0; });
+    block.forEach(function (byteVal) {
+      var factor = byteVal ^ result.shift();
+      result.push(0);
+      gen.forEach(function (coef, idx) { result[idx] ^= gfMul(coef, factor); });
+    });
+    return result;
+  }
+  var numBlocks = BLOCKS[version - 1];
+  var eccLen = ECC_PER_BLOCK[version - 1];
+  var rawCodewords = Math.floor(rawModules(version) / 8);
+  var numShort = numBlocks - (rawCodewords % numBlocks);
+  var shortLen = Math.floor(rawCodewords / numBlocks);
+  var gen = rsGenerator(eccLen);
+  var blocks = [];
+  for (var bi = 0, off = 0; bi < numBlocks; bi++) {
+    var len = shortLen - eccLen + (bi < numShort ? 0 : 1);
+    var dat = data.slice(off, off + len);
+    off += len;
+    var ecc = rsRemainder(dat, gen);
+    if (bi < numShort) dat.push(0); // placeholder so every block has the same length
+    blocks.push(dat.concat(ecc));
+  }
+  var codewords = [];
+  for (var pos = 0; pos < blocks[0].length; pos++) {
+    blocks.forEach(function (blk, idx) {
+      if (pos !== shortLen - eccLen || idx >= numShort) codewords.push(blk[pos]);
+    });
+  }
+
+  // --- module placement ----------------------------------------------------
+  var modules = [], isFunction = [];
+  for (var r = 0; r < size; r++) {
+    modules.push([]); isFunction.push([]);
+    for (var c = 0; c < size; c++) { modules[r].push(false); isFunction[r].push(false); }
+  }
+  function setFn(x, y, dark) { modules[y][x] = dark; isFunction[y][x] = true; }
+  function drawFinder(x, y) {
+    for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+      var dist = Math.max(Math.abs(dx), Math.abs(dy));
+      var xx = x + dx, yy = y + dy;
+      if (xx >= 0 && xx < size && yy >= 0 && yy < size) setFn(xx, yy, dist !== 2 && dist !== 4);
+    }
+  }
+  function drawAlign(x, y) {
+    for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) setFn(x + dx, y + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+  }
+  for (var t = 0; t < size; t++) { setFn(6, t, t % 2 === 0); setFn(t, 6, t % 2 === 0); }
+  drawFinder(3, 3); drawFinder(size - 4, 3); drawFinder(3, size - 4);
+  var alignPos = [];
+  if (version > 1) {
+    var numAlign = Math.floor(version / 7) + 2;
+    var step = version === 32 ? 26 : Math.ceil((version * 4 + 4) / (numAlign * 2 - 2)) * 2;
+    alignPos = [6];
+    for (var p = size - 7; alignPos.length < numAlign; p -= step) alignPos.splice(1, 0, p);
+  }
+  alignPos.forEach(function (ax, ai) {
+    alignPos.forEach(function (ay, aj) {
+      var corner = (ai === 0 && aj === 0) || (ai === 0 && aj === alignPos.length - 1) || (ai === alignPos.length - 1 && aj === 0);
+      if (!corner) drawAlign(ax, ay);
+    });
+  });
+  function drawFormat(mask) {
+    var fdata = (ECL_BITS << 3) | mask;
+    var rem = fdata;
+    for (var q = 0; q < 10; q++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    var fbits = ((fdata << 10) | rem) ^ 0x5412;
+    function bit(n) { return ((fbits >>> n) & 1) === 1; }
+    for (var m = 0; m <= 5; m++) setFn(8, m, bit(m));
+    setFn(8, 7, bit(6)); setFn(8, 8, bit(7)); setFn(7, 8, bit(8));
+    for (var m2 = 9; m2 < 15; m2++) setFn(14 - m2, 8, bit(m2));
+    for (var m3 = 0; m3 < 8; m3++) setFn(size - 1 - m3, 8, bit(m3));
+    for (var m4 = 8; m4 < 15; m4++) setFn(8, size - 15 + m4, bit(m4));
+    setFn(8, size - 8, true);
+  }
+  drawFormat(0);
+  if (version >= 7) {
+    var vrem = version;
+    for (var q2 = 0; q2 < 12; q2++) vrem = (vrem << 1) ^ ((vrem >>> 11) * 0x1F25);
+    var vbits = (version << 12) | vrem;
+    for (var n = 0; n < 18; n++) {
+      var vb = ((vbits >>> n) & 1) === 1;
+      var a = size - 11 + (n % 3), b2 = Math.floor(n / 3);
+      setFn(a, b2, vb); setFn(b2, a, vb);
+    }
+  }
+  // data bits, zig-zag from the bottom-right
+  var bitIndex = 0, totalBits = codewords.length * 8;
+  for (var right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (var vert = 0; vert < size; vert++) {
+      for (var jj = 0; jj < 2; jj++) {
+        var x = right - jj;
+        var upward = ((right + 1) & 2) === 0;
+        var y = upward ? size - 1 - vert : vert;
+        if (!isFunction[y][x] && bitIndex < totalBits) {
+          modules[y][x] = ((codewords[bitIndex >>> 3] >>> (7 - (bitIndex & 7))) & 1) === 1;
+          bitIndex++;
+        }
+      }
+    }
+  }
+
+  // --- masking -------------------------------------------------------------
+  function maskBit(mask, x, y) {
+    switch (mask) {
+      case 0: return (x + y) % 2 === 0;
+      case 1: return y % 2 === 0;
+      case 2: return x % 3 === 0;
+      case 3: return (x + y) % 3 === 0;
+      case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+      case 5: return (x * y) % 2 + (x * y) % 3 === 0;
+      case 6: return ((x * y) % 2 + (x * y) % 3) % 2 === 0;
+      default: return ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+    }
+  }
+  function applyMask(mask) {
+    for (var yy = 0; yy < size; yy++) for (var xx = 0; xx < size; xx++) {
+      if (!isFunction[yy][xx] && maskBit(mask, xx, yy)) modules[yy][xx] = !modules[yy][xx];
+    }
+  }
+  function penalty() {
+    var score = 0, dark = 0;
+    function lineRuns(getter) {
+      for (var i1 = 0; i1 < size; i1++) {
+        var run = 0, prev = null, hist = [0, 0, 0, 0, 0, 0, 0];
+        for (var i2 = 0; i2 <= size; i2++) {
+          var cur = i2 < size ? getter(i1, i2) : null;
+          if (cur === prev) { run++; continue; }
+          if (prev !== null) {
+            if (run >= 5) score += 3 + (run - 5);
+            hist.shift(); hist.push(run);
+            // finder-like pattern 1:1:3:1:1 with light run of 4+ on one side
+            if (prev === false || cur === null) {
+              var h = hist;
+              var core = h[2] === h[1] && h[1] === h[3] && h[3] === h[5] && h[4] === 3 * h[1] && h[1] > 0;
+              if (core && (h[0] >= 4 || h[6] >= 4)) score += 40;
+            }
+          }
+          prev = cur; run = 1;
+        }
+      }
+    }
+    lineRuns(function (r1, c1) { return modules[r1][c1]; });
+    lineRuns(function (c1, r1) { return modules[r1][c1]; });
+    for (var y1 = 0; y1 < size - 1; y1++) for (var x1 = 0; x1 < size - 1; x1++) {
+      var m0 = modules[y1][x1];
+      if (m0 === modules[y1][x1 + 1] && m0 === modules[y1 + 1][x1] && m0 === modules[y1 + 1][x1 + 1]) score += 3;
+    }
+    for (var y2 = 0; y2 < size; y2++) for (var x2 = 0; x2 < size; x2++) if (modules[y2][x2]) dark++;
+    var total = size * size;
+    var kk = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
+    score += kk * 10;
+    return score;
+  }
+  var bestMask = 0, bestScore = Infinity;
+  for (var mk = 0; mk < 8; mk++) {
+    applyMask(mk); drawFormat(mk);
+    var sc = penalty();
+    if (sc < bestScore) { bestScore = sc; bestMask = mk; }
+    applyMask(mk); // undo
+  }
+  applyMask(bestMask); drawFormat(bestMask);
+
+  return { size: size, version: version, mask: bestMask, modules: modules };
+}
+
+function qrToSvg(qr, cellSize, margin) {
+  cellSize = cellSize || 4; margin = margin === undefined ? 4 : margin;
+  var dim = (qr.size + margin * 2) * cellSize;
+  var path = '';
+  for (var y = 0; y < qr.size; y++) for (var x = 0; x < qr.size; x++) {
+    if (qr.modules[y][x]) path += 'M' + ((x + margin) * cellSize) + ' ' + ((y + margin) * cellSize) + 'h' + cellSize + 'v' + cellSize + 'h-' + cellSize + 'z';
+  }
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" shape-rendering="crispEdges" role="img" aria-label="QR code">' +
+    '<rect width="100%" height="100%" fill="#fff"/><path d="' + path + '" fill="#000"/></svg>';
+}
+</script>
+<script>
+(function () {
+  'use strict';
+  var APP = window.APP || {};
+  var $ = function (id) { return document.getElementById(id); };
+  var qs = window.location.search || '';
+  var page = APP.page || (/[?&]page=qr(&|$)/.test(qs) ? 'qr' : 'app');
+  var appUrl = APP.url || window.location.href.replace(/[?#].*$/, '');
+  var sig = null;
+
+  // ---- navigation & helpers (no settings needed) --------------------------
+  function go(view) {
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.hidden = v.id !== 'view-' + view; });
+    window.scrollTo(0, 0);
+    if (view === 'sign' && sig) sig.resize();
+    if (view === 'signout') setTimeout(function () { $('f-signout').focus(); }, 50);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function (btn) {
+    btn.addEventListener('click', function () { go(btn.getAttribute('data-go')); });
+  });
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function showError(id, problems) {
+    var box = $(id);
+    if (!problems || !problems.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = '<ul>' + problems.map(function (p) { return '<li>' + escapeHtml(p) + '</li>'; }).join('') + '</ul>';
+    box.hidden = false;
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  function looksLikeEmail(s) {
+    var at = s.indexOf('@');
+    return at > 0 && s.indexOf('.', at) > at + 1 && s.indexOf(' ') === -1 && s.charAt(s.length - 1) !== '.';
+  }
+  function busy(btn, on, label) {
+    btn.disabled = on;
+    if (on) { btn.setAttribute('data-label', btn.textContent); btn.textContent = label; }
+    else btn.textContent = btn.getAttribute('data-label') || btn.textContent;
+    btn.closest('.view').classList.toggle('busy', on);
+  }
+
+  // ---- talking to the Google Sheet ----------------------------------------
+  // Inside Google's own page the script runs through google.script.run; on an
+  // ordinary web page it posts JSON to the Apps Script URL. The POST is sent as
+  // plain text with no cookies, so the visitor's Google account is never involved.
+  var OFFLINE_MSG = 'The sign-in service could not be reached. Please check your phone has internet access, or see reception.';
+  function server(fn, arg) {
+    if (window.google && google.script && google.script.run) {
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (err) {
+            var msg = (err && err.message) ? err.message : String(err || 'Something went wrong.');
+            reject(new Error(msg.replace(/^(Error|Exception):\s*/i, '')));
+          })[fn](arg);
+      });
+    }
+    if (APP.api) {
+      return fetch(APP.api, { method: 'POST', body: JSON.stringify({ action: fn, data: arg || {} }) })
+        .then(function (r) {
+          if (!r.ok) throw new Error('The sign-in service returned an error (' + r.status + '). Please see reception.');
+          return r.json();
+        }, function () { throw new Error(OFFLINE_MSG); })
+        .then(function (j) {
+          if (!j || !j.ok) throw new Error((j && j.error) || 'Something went wrong. Please see reception.');
+          return j.result;
+        });
+    }
+    return Promise.reject(new Error('The sign-in service is not available right now. Please see reception.'));
+  }
+
+  // ---- everything that depends on the settings in the spreadsheet ---------
+  function init(cfg) {
+    cfg = cfg || {};
+    var S = cfg.settings || {};
+    var hosts = cfg.hosts || [];
+    var rules = cfg.rules || [];
+    var state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
+
+    // branding
+    document.documentElement.style.setProperty('--brand', S.theme_colour || '#1b5e3f');
+    document.title = (S.site_name || 'Visitor') + ' – ' + (S.app_title || 'Visitor Sign-In');
+    $('brand').textContent = S.site_name || '';
+    $('brandSub').textContent = S.app_title || '';
+    if (S.logo_url) { $('logo').src = S.logo_url; $('logo').hidden = false; }
+    $('welcomeMsg').textContent = S.welcome_message || '';
+    $('privacy').textContent = S.privacy_note || '';
+    $('assembly').textContent = S.assembly_point || 'as directed by your host';
+    Array.prototype.forEach.call(document.querySelectorAll('.siteName'), function (el) { el.textContent = S.site_name || ''; });
+
+    // step 1: details
+    function chip(label) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = label; b.setAttribute('aria-pressed', 'false');
+      return b;
+    }
+    (S.purposes || []).forEach(function (p) {
+      var b = chip(p);
+      b.addEventListener('click', function () {
+        state.purpose = p;
+        Array.prototype.forEach.call($('purposes').children, function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
+        var other = /^other/i.test(p);
+        $('f-purposeDetail').hidden = !other;
+        if (other) $('f-purposeDetail').focus();
+      });
+      $('purposes').appendChild(b);
+    });
+    (S.areas || []).forEach(function (a) {
+      var b = chip(a);
+      b.addEventListener('click', function () {
+        var on = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        state.areas = on ? state.areas.concat([a]) : state.areas.filter(function (x) { return x !== a; });
+      });
+      $('areas').appendChild(b);
+    });
+    (function buildHosts() {
+      var sel = $('f-host');
+      var first = document.createElement('option');
+      first.value = ''; first.textContent = hosts.length ? 'Choose a name…' : 'Choose…'; first.disabled = true; first.selected = true;
+      sel.appendChild(first);
+      hosts.forEach(function (h) { var o = document.createElement('option'); o.value = h; o.textContent = h; sel.appendChild(o); });
+      var other = document.createElement('option'); other.value = '__other__'; other.textContent = 'Someone not listed…'; sel.appendChild(other);
+      sel.addEventListener('change', function () {
+        var isOther = sel.value === '__other__';
+        $('f-hostOther').hidden = !isOther;
+        if (isOther) $('f-hostOther').focus();
+      });
+    })();
+    function hostValue() {
+      var v = $('f-host').value;
+      return v === '__other__' ? $('f-hostOther').value.trim() : v;
+    }
+    if (S.require_visitor_email) $('emailOpt').hidden = true;
+    function detailsProblems() {
+      var p = [];
+      if ($('f-name').value.trim().length < 2) p.push('Please enter your full name.');
+      if (!$('f-company').value.trim()) p.push('Please enter your company, or "Private".');
+      if ($('f-phone').value.replace(/\D/g, '').length < 6) p.push('Please enter a contact number.');
+      var email = $('f-email').value.trim();
+      if (S.require_visitor_email && !email) p.push('Please enter your email address.');
+      if (email && !looksLikeEmail(email)) p.push('Please check your email address.');
+      if (!state.purpose) p.push('Please choose the purpose of your visit.');
+      if (/^other/i.test(state.purpose) && !$('f-purposeDetail').value.trim()) p.push('Please describe the purpose of your visit.');
+      if (!hostValue()) p.push('Please tell us who you are visiting.');
+      if (!state.areas.length) p.push('Please select at least one area.');
+      return p;
+    }
+    $('btn-details').addEventListener('click', function () {
+      var p = detailsProblems();
+      showError('err-details', p);
+      if (!p.length) go('declarations');
+    });
+
+    // step 2: declarations
+    Array.prototype.forEach.call(document.querySelectorAll('.seg'), function (seg) {
+      var name = seg.getAttribute('data-name');
+      Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+        b.addEventListener('click', function () {
+          state[name] = b.getAttribute('data-v');
+          Array.prototype.forEach.call(seg.querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+          $('hint-' + name).hidden = state[name] !== 'Yes';
+        });
+      });
+    });
+    $('btn-declarations').addEventListener('click', function () {
+      var p = [];
+      if (!state.visitedGrow) p.push('Please answer the first question.');
+      if (!state.unwell) p.push('Please answer the second question.');
+      showError('err-declarations', p);
+      if (!p.length) go('rules');
+    });
+
+    // step 3: rules
+    var ticked = 0;
+    rules.forEach(function (text, i) {
+      var li = document.createElement('li');
+      var label = document.createElement('label');
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'rule' + i;
+      var span = document.createElement('span'); span.textContent = text;
+      label.appendChild(cb); label.appendChild(span); li.appendChild(label); $('rules').appendChild(li);
+      cb.addEventListener('change', function () {
+        li.classList.toggle('done', cb.checked);
+        ticked = $('rules').querySelectorAll('input:checked').length;
+        updateRulesCount();
+      });
+    });
+    function updateRulesCount() {
+      var all = ticked === rules.length && rules.length > 0;
+      $('rulesCount').textContent = all ? 'All ' + rules.length + ' rules confirmed – thank you.' : ticked + ' of ' + rules.length + ' rules confirmed';
+      $('btn-rules').disabled = !all;
+    }
+    updateRulesCount();
+    $('btn-rules').addEventListener('click', function () { go('sign'); });
+
+    // step 4: signature
+    sig = (function () {
+      var canvas = $('sig');
+      var ctx = canvas.getContext('2d');
+      var drawing = false, hasInk = false;
+      function resize() {
+        var ratio = Math.max(window.devicePixelRatio || 1, 1);
+        var w = canvas.clientWidth || 300, h = canvas.clientHeight || 180;
+        if (canvas.width === Math.round(w * ratio) && canvas.height === Math.round(h * ratio)) return;
+        canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+        hasInk = false;
+      }
+      function pos(e) { var r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+      canvas.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
+        drawing = true; hasInk = true;
+        var p = pos(e);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.01, p.y + 0.01); ctx.stroke();
+      });
+      canvas.addEventListener('pointermove', function (e) {
+        if (!drawing) return;
+        e.preventDefault();
+        var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+      });
+      function stop() { drawing = false; }
+      canvas.addEventListener('pointerup', stop);
+      canvas.addEventListener('pointercancel', stop);
+      canvas.addEventListener('pointerleave', stop);
+      function clear() { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.restore(); hasInk = false; }
+      $('sigClear').addEventListener('click', clear);
+      window.addEventListener('resize', function () { if (!$('view-sign').hidden && !hasInk) resize(); });
+      function toDataUrl() {
+        if (!hasInk) return '';
+        var out = document.createElement('canvas');
+        var w = 600, h = Math.round(600 * canvas.height / canvas.width);
+        out.width = w; out.height = h;
+        var octx = out.getContext('2d');
+        octx.fillStyle = '#fff'; octx.fillRect(0, 0, w, h);
+        octx.drawImage(canvas, 0, 0, w, h);
+        return out.toDataURL('image/png');
+      }
+      return { resize: resize, clear: clear, isEmpty: function () { return !hasInk; }, toDataUrl: toDataUrl };
+    })();
+    if (!S.require_drawn_signature) $('sigField').hidden = true;
+
+    $('btn-submit').addEventListener('click', function () {
+      var p = [];
+      if ($('f-typed').value.trim().length < 2) p.push('Please type your full name as your signature.');
+      if (S.require_drawn_signature && sig.isEmpty()) p.push('Please sign in the signature box.');
+      showError('err-sign', p);
+      if (p.length) return;
+      var payload = {
+        name: $('f-name').value.trim(),
+        company: $('f-company').value.trim(),
+        phone: $('f-phone').value.trim(),
+        email: $('f-email').value.trim(),
+        purpose: state.purpose,
+        purposeDetail: /^other/i.test(state.purpose) ? $('f-purposeDetail').value.trim() : '',
+        host: hostValue(),
+        areas: state.areas,
+        rego: $('f-rego').value.trim(),
+        visitedGrow: state.visitedGrow,
+        unwell: state.unwell,
+        rulesAck: ticked === rules.length,
+        rulesCount: rules.length,
+        typedSignature: $('f-typed').value.trim(),
+        signature: S.require_drawn_signature ? sig.toDataUrl() : ''
+      };
+      var btn = $('btn-submit');
+      busy(btn, true, 'Signing you in…');
+      server('signIn', payload).then(function (res) {
+        busy(btn, false);
+        $('badgeNo').textContent = res.visitorNo;
+        $('badgeName').textContent = res.name;
+        $('badgeCompany').textContent = res.company;
+        $('badgeHost').textContent = res.host;
+        $('badgeTime').textContent = res.timeIn + ', ' + res.date;
+        var extra = res.hostNotified ? ' ' + res.host + ' has been notified that you\'re here.'
+          : (res.receptionNotified ? ' Reception has been notified that you\'re here.' : '');
+        $('doneMsg').textContent = (res.receptionMessage || '') + extra;
+        go('done');
+        resetForm();
+      }).catch(function (err) {
+        busy(btn, false);
+        showError('err-sign', [err.message]);
+      });
+    });
+
+    function resetForm() {
+      ['f-name', 'f-company', 'f-phone', 'f-email', 'f-purposeDetail', 'f-hostOther', 'f-rego', 'f-typed', 'f-signout'].forEach(function (id) { $(id).value = ''; });
+      $('f-host').selectedIndex = 0; $('f-hostOther').hidden = true; $('f-purposeDetail').hidden = true;
+      state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
+      Array.prototype.forEach.call(document.querySelectorAll('[aria-pressed]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
+      Array.prototype.forEach.call(document.querySelectorAll('.hint'), function (h) { h.hidden = true; });
+      Array.prototype.forEach.call($('rules').querySelectorAll('input'), function (cb) { cb.checked = false; cb.closest('li').classList.remove('done'); });
+      ticked = 0; updateRulesCount();
+      sig.clear();
+      ['err-details', 'err-declarations', 'err-sign', 'err-signout'].forEach(function (id) { showError(id, []); });
+    }
+
+    // sign out
+    $('btn-signout').addEventListener('click', function () {
+      var v = $('f-signout').value.trim();
+      if (!v) { showError('err-signout', ['Please enter your visitor number or full name.']); return; }
+      showError('err-signout', []);
+      var btn = $('btn-signout');
+      busy(btn, true, 'Signing you out…');
+      server('signOut', { value: v }).then(function (res) {
+        busy(btn, false);
+        $('signoutMsg').textContent = res.name + ' (' + res.visitorNo + ') signed out at ' + res.timeOut + '.';
+        $('f-signout').value = '';
+        go('signout-done');
+      }).catch(function (err) {
+        busy(btn, false);
+        showError('err-signout', [err.message]);
+      });
+    });
+    $('f-signout').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-signout').click(); });
+
+    // QR poster
+    if (page === 'qr') {
+      $('qrUrl').textContent = appUrl;
+      try {
+        $('qr').innerHTML = qrToSvg(makeQR(appUrl), 4, 2);
+      } catch (err) {
+        $('qr').innerHTML = '<p class="error">The QR code could not be generated: ' + escapeHtml(err.message) + '</p>';
+      }
+      go('qr');
+    } else {
+      go('welcome');
+    }
+  }
+
+  // ---- start up -----------------------------------------------------------
+  function loadConfig() {
+    $('loadingMsg').textContent = 'Loading the sign-in form…';
+    $('btn-retry').hidden = true;
+    go('loading');
+    server('config').then(init).catch(function (err) {
+      $('loadingMsg').textContent = err.message;
+      $('btn-retry').hidden = false;
+    });
+  }
+  $('btn-retry').addEventListener('click', loadConfig);
+  if (APP.siteName) { $('brand').textContent = APP.siteName; }
+  if (APP.config) init(APP.config);
+  else loadConfig();
+})();
+</script>
+</script>
+</body>
+</html>
