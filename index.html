@@ -157,7 +157,8 @@
   <section class="view card" id="view-welcome" hidden>
     <h1>Welcome</h1>
     <p id="welcomeMsg" class="muted"></p>
-    <button class="btn primary block" type="button" data-go="details">Sign in as a visitor</button>
+    <div class="error" id="netNote" hidden>We're having trouble reaching the sign-in service. You can still fill in the form; if it won't send, please see reception.</div>
+    <button class="btn primary block" type="button" id="btn-start">Sign in as a visitor</button>
     <button class="btn ghost block" type="button" data-go="signout">I'm leaving – sign me out</button>
     <div class="prep">
       You'll need:
@@ -314,8 +315,12 @@
 
 <script>
 // The Apps Script deployment this page talks to. If you ever create a NEW deployment
-// (a different /exec address), update this one line and re-upload the page.
-window.APP = { api: "https://script.google.com/macros/s/AKfycbyg3WGonglnVpvK7bTStV_skdkZwuTW3vfxKRFKdVE3esXDuveZRvljVnK2gF-OMxkLbQ/exec", siteName: "Cana Australasia" };
+// (a different /exec address), update the "api" line and re-upload the page.
+window.APP = {
+  api: "https://script.google.com/macros/s/AKfycbybBOejnTdNOauYLKVTPA4tCwt2V8NHVoNQr0BflgaxslsKhnUNkSEHv5tHdpOnb_fhfg/exec",
+  siteName: "Cana Australasia",
+  defaults: {"settings":{"site_name":"Cana Australasia","app_title":"Visitor Induction & Sign-In","welcome_message":"Welcome. Before you enter the site, please complete this short induction and sign in. It takes about two minutes.","purposes":["Delivery or pick-up","Contractor or maintenance","Audit or inspection","Meeting","Interview","Other"],"areas":["Office only","Cultivation","Drying / processing","Storage","Loading dock"],"require_drawn_signature":true,"require_visitor_email":false,"reception_message":"Please take a seat in reception. Your host will come and collect you.","assembly_point":"Front car park","privacy_note":"Your details are collected for site security, safety and regulatory records and are only accessible to Cana Australasia staff.","logo_url":"","theme_colour":"#1b5e3f"},"hosts":["Hieu (Justin)","Ricky","Lalit","Hung (Becks)","Kevin","Johnny"],"rules":["Sign in on arrival and sign out when you leave. Wear your visitor pass at all times and show photo ID if asked.","Stay with your host at all times. Never enter any area unaccompanied or open doors for others.","No photos, video or recordings anywhere on site, and do not post about the site on social media.","Everything you see or hear on site is confidential.","Wear the PPE you are given in all cultivation, processing and storage areas, and follow the gowning procedure.","Do not touch plants, product, equipment or documents unless asked. Nothing leaves the site.","Do not bring plant material, soil, seeds, food or drink into the facility. Tell your host if you have visited another growing site or handled plants in the last 24 hours.","No weapons, alcohol or drugs on site. Bags and vehicles may be inspected. CCTV is in operation.","Follow all signage and safety directions, and report any hazard or incident to your host immediately. In an emergency, go with your host to the assembly point.","No one under 18 is permitted on site. Breaches of these rules will result in removal from the premises."]}
+};
 </script>
 <script>
 /*
@@ -589,9 +594,18 @@ function qrToSvg(qr, cellSize, margin) {
   var qs = window.location.search || '';
   var page = APP.page || (/[?&]page=qr(&|$)/.test(qs) ? 'qr' : 'app');
   var appUrl = APP.url || window.location.href.replace(/[?#].*$/, '');
+
+  // Settings currently in use (rebuilt by render() whenever fresh settings arrive)
+  var S = {}, hosts = [], rules = [];
+  var state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
+  var ticked = 0;
   var sig = null;
 
-  // ---- navigation & helpers (no settings needed) --------------------------
+  // ---- navigation & helpers -----------------------------------------------
+  function currentView() {
+    var v = document.querySelector('.view:not([hidden])');
+    return v ? v.id.replace('view-', '') : '';
+  }
   function go(view) {
     Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.hidden = v.id !== 'view-' + view; });
     window.scrollTo(0, 0);
@@ -613,10 +627,17 @@ function qrToSvg(qr, cellSize, margin) {
     var at = s.indexOf('@');
     return at > 0 && s.indexOf('.', at) > at + 1 && s.indexOf(' ') === -1 && s.charAt(s.length - 1) !== '.';
   }
-  function busy(btn, on, label) {
+  var busyTimer = null;
+  function busy(btn, on, label, laterLabel) {
     btn.disabled = on;
-    if (on) { btn.setAttribute('data-label', btn.textContent); btn.textContent = label; }
-    else btn.textContent = btn.getAttribute('data-label') || btn.textContent;
+    clearTimeout(busyTimer);
+    if (on) {
+      btn.setAttribute('data-label', btn.textContent);
+      btn.textContent = label;
+      if (laterLabel) busyTimer = setTimeout(function () { if (btn.disabled) btn.textContent = laterLabel; }, 5000);
+    } else {
+      btn.textContent = btn.getAttribute('data-label') || btn.textContent;
+    }
     btn.closest('.view').classList.toggle('busy', on);
   }
 
@@ -640,7 +661,7 @@ function qrToSvg(qr, cellSize, margin) {
       return fetch(APP.api, { method: 'POST', body: JSON.stringify({ action: fn, data: arg || {} }) })
         .then(function (r) {
           if (!r.ok) throw new Error('The sign-in service returned an error (' + r.status + '). Please see reception.');
-          return r.json();
+          return r.json().catch(function () { throw new Error('The sign-in service gave an unexpected reply. Please see reception.'); });
         }, function () { throw new Error(OFFLINE_MSG); })
         .then(function (j) {
           if (!j || !j.ok) throw new Error((j && j.error) || 'Something went wrong. Please see reception.');
@@ -651,12 +672,12 @@ function qrToSvg(qr, cellSize, margin) {
   }
 
   // ---- everything that depends on the settings in the spreadsheet ---------
-  function init(cfg) {
+  function render(cfg) {
     cfg = cfg || {};
-    var S = cfg.settings || {};
-    var hosts = cfg.hosts || [];
-    var rules = cfg.rules || [];
-    var state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
+    S = cfg.settings || {};
+    hosts = cfg.hosts || [];
+    rules = cfg.rules || [];
+    state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
 
     // branding
     document.documentElement.style.setProperty('--brand', S.theme_colour || '#1b5e3f');
@@ -669,12 +690,13 @@ function qrToSvg(qr, cellSize, margin) {
     $('assembly').textContent = S.assembly_point || 'as directed by your host';
     Array.prototype.forEach.call(document.querySelectorAll('.siteName'), function (el) { el.textContent = S.site_name || ''; });
 
-    // step 1: details
+    // choices
     function chip(label) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'chip'; b.textContent = label; b.setAttribute('aria-pressed', 'false');
       return b;
     }
+    $('purposes').innerHTML = '';
     (S.purposes || []).forEach(function (p) {
       var b = chip(p);
       b.addEventListener('click', function () {
@@ -686,6 +708,7 @@ function qrToSvg(qr, cellSize, margin) {
       });
       $('purposes').appendChild(b);
     });
+    $('areas').innerHTML = '';
     (S.areas || []).forEach(function (a) {
       var b = chip(a);
       b.addEventListener('click', function () {
@@ -695,25 +718,55 @@ function qrToSvg(qr, cellSize, margin) {
       });
       $('areas').appendChild(b);
     });
-    (function buildHosts() {
-      var sel = $('f-host');
-      var first = document.createElement('option');
-      first.value = ''; first.textContent = hosts.length ? 'Choose a name…' : 'Choose…'; first.disabled = true; first.selected = true;
-      sel.appendChild(first);
-      hosts.forEach(function (h) { var o = document.createElement('option'); o.value = h; o.textContent = h; sel.appendChild(o); });
-      var other = document.createElement('option'); other.value = '__other__'; other.textContent = 'Someone not listed…'; sel.appendChild(other);
-      sel.addEventListener('change', function () {
-        var isOther = sel.value === '__other__';
-        $('f-hostOther').hidden = !isOther;
-        if (isOther) $('f-hostOther').focus();
+    var sel = $('f-host');
+    sel.innerHTML = '';
+    var first = document.createElement('option');
+    first.value = ''; first.textContent = hosts.length ? 'Choose a name…' : 'Choose…'; first.disabled = true; first.selected = true;
+    sel.appendChild(first);
+    hosts.forEach(function (h) { var o = document.createElement('option'); o.value = h; o.textContent = h; sel.appendChild(o); });
+    var other = document.createElement('option'); other.value = '__other__'; other.textContent = 'Someone not listed…'; sel.appendChild(other);
+    $('f-hostOther').hidden = true;
+    $('emailOpt').hidden = !!S.require_visitor_email;
+
+    // rules
+    $('rules').innerHTML = '';
+    ticked = 0;
+    rules.forEach(function (text, i) {
+      var li = document.createElement('li');
+      var label = document.createElement('label');
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'rule' + i;
+      var span = document.createElement('span'); span.textContent = text;
+      label.appendChild(cb); label.appendChild(span); li.appendChild(label); $('rules').appendChild(li);
+      cb.addEventListener('change', function () {
+        li.classList.toggle('done', cb.checked);
+        ticked = $('rules').querySelectorAll('input:checked').length;
+        updateRulesCount();
       });
-    })();
-    function hostValue() {
-      var v = $('f-host').value;
-      return v === '__other__' ? $('f-hostOther').value.trim() : v;
-    }
-    if (S.require_visitor_email) $('emailOpt').hidden = true;
-    function detailsProblems() {
+    });
+    updateRulesCount();
+    $('sigField').hidden = !S.require_drawn_signature;
+  }
+
+  function updateRulesCount() {
+    var all = ticked === rules.length && rules.length > 0;
+    $('rulesCount').textContent = all ? 'All ' + rules.length + ' rules confirmed – thank you.' : ticked + ' of ' + rules.length + ' rules confirmed';
+    $('btn-rules').disabled = !all;
+  }
+  function hostValue() {
+    var v = $('f-host').value;
+    return v === '__other__' ? $('f-hostOther').value.trim() : v;
+  }
+
+  // ---- handlers that are attached once ------------------------------------
+  function bindOnce() {
+    $('f-host').addEventListener('change', function () {
+      var isOther = $('f-host').value === '__other__';
+      $('f-hostOther').hidden = !isOther;
+      if (isOther) $('f-hostOther').focus();
+    });
+
+    // step 1: details
+    $('btn-details').addEventListener('click', function () {
       var p = [];
       if ($('f-name').value.trim().length < 2) p.push('Please enter your full name.');
       if (!$('f-company').value.trim()) p.push('Please enter your company, or "Private".');
@@ -725,10 +778,6 @@ function qrToSvg(qr, cellSize, margin) {
       if (/^other/i.test(state.purpose) && !$('f-purposeDetail').value.trim()) p.push('Please describe the purpose of your visit.');
       if (!hostValue()) p.push('Please tell us who you are visiting.');
       if (!state.areas.length) p.push('Please select at least one area.');
-      return p;
-    }
-    $('btn-details').addEventListener('click', function () {
-      var p = detailsProblems();
       showError('err-details', p);
       if (!p.length) go('declarations');
     });
@@ -753,28 +802,9 @@ function qrToSvg(qr, cellSize, margin) {
     });
 
     // step 3: rules
-    var ticked = 0;
-    rules.forEach(function (text, i) {
-      var li = document.createElement('li');
-      var label = document.createElement('label');
-      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'rule' + i;
-      var span = document.createElement('span'); span.textContent = text;
-      label.appendChild(cb); label.appendChild(span); li.appendChild(label); $('rules').appendChild(li);
-      cb.addEventListener('change', function () {
-        li.classList.toggle('done', cb.checked);
-        ticked = $('rules').querySelectorAll('input:checked').length;
-        updateRulesCount();
-      });
-    });
-    function updateRulesCount() {
-      var all = ticked === rules.length && rules.length > 0;
-      $('rulesCount').textContent = all ? 'All ' + rules.length + ' rules confirmed – thank you.' : ticked + ' of ' + rules.length + ' rules confirmed';
-      $('btn-rules').disabled = !all;
-    }
-    updateRulesCount();
     $('btn-rules').addEventListener('click', function () { go('sign'); });
 
-    // step 4: signature
+    // step 4: signature pad
     sig = (function () {
       var canvas = $('sig');
       var ctx = canvas.getContext('2d');
@@ -811,7 +841,7 @@ function qrToSvg(qr, cellSize, margin) {
       function toDataUrl() {
         if (!hasInk) return '';
         var out = document.createElement('canvas');
-        var w = 600, h = Math.round(600 * canvas.height / canvas.width);
+        var w = 480, h = Math.round(480 * canvas.height / canvas.width);
         out.width = w; out.height = h;
         var octx = out.getContext('2d');
         octx.fillStyle = '#fff'; octx.fillRect(0, 0, w, h);
@@ -820,7 +850,6 @@ function qrToSvg(qr, cellSize, margin) {
       }
       return { resize: resize, clear: clear, isEmpty: function () { return !hasInk; }, toDataUrl: toDataUrl };
     })();
-    if (!S.require_drawn_signature) $('sigField').hidden = true;
 
     $('btn-submit').addEventListener('click', function () {
       var p = [];
@@ -846,7 +875,7 @@ function qrToSvg(qr, cellSize, margin) {
         signature: S.require_drawn_signature ? sig.toDataUrl() : ''
       };
       var btn = $('btn-submit');
-      busy(btn, true, 'Signing you in…');
+      busy(btn, true, 'Signing you in…', 'Nearly there…');
       server('signIn', payload).then(function (res) {
         busy(btn, false);
         $('badgeNo').textContent = res.visitorNo;
@@ -865,25 +894,13 @@ function qrToSvg(qr, cellSize, margin) {
       });
     });
 
-    function resetForm() {
-      ['f-name', 'f-company', 'f-phone', 'f-email', 'f-purposeDetail', 'f-hostOther', 'f-rego', 'f-typed', 'f-signout'].forEach(function (id) { $(id).value = ''; });
-      $('f-host').selectedIndex = 0; $('f-hostOther').hidden = true; $('f-purposeDetail').hidden = true;
-      state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
-      Array.prototype.forEach.call(document.querySelectorAll('[aria-pressed]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
-      Array.prototype.forEach.call(document.querySelectorAll('.hint'), function (h) { h.hidden = true; });
-      Array.prototype.forEach.call($('rules').querySelectorAll('input'), function (cb) { cb.checked = false; cb.closest('li').classList.remove('done'); });
-      ticked = 0; updateRulesCount();
-      sig.clear();
-      ['err-details', 'err-declarations', 'err-sign', 'err-signout'].forEach(function (id) { showError(id, []); });
-    }
-
     // sign out
     $('btn-signout').addEventListener('click', function () {
       var v = $('f-signout').value.trim();
       if (!v) { showError('err-signout', ['Please enter your visitor number or full name.']); return; }
       showError('err-signout', []);
       var btn = $('btn-signout');
-      busy(btn, true, 'Signing you out…');
+      busy(btn, true, 'Signing you out…', 'Nearly there…');
       server('signOut', { value: v }).then(function (res) {
         busy(btn, false);
         $('signoutMsg').textContent = res.name + ' (' + res.visitorNo + ') signed out at ' + res.timeOut + '.';
@@ -895,35 +912,79 @@ function qrToSvg(qr, cellSize, margin) {
       });
     });
     $('f-signout').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btn-signout').click(); });
+  }
 
-    // QR poster
-    if (page === 'qr') {
-      $('qrUrl').textContent = appUrl;
-      try {
-        $('qr').innerHTML = qrToSvg(makeQR(appUrl), 4, 2);
-      } catch (err) {
-        $('qr').innerHTML = '<p class="error">The QR code could not be generated: ' + escapeHtml(err.message) + '</p>';
-      }
-      go('qr');
-    } else {
-      go('welcome');
+  function resetForm() {
+    ['f-name', 'f-company', 'f-phone', 'f-email', 'f-purposeDetail', 'f-hostOther', 'f-rego', 'f-typed', 'f-signout'].forEach(function (id) { $(id).value = ''; });
+    $('f-host').selectedIndex = 0; $('f-hostOther').hidden = true; $('f-purposeDetail').hidden = true;
+    state = { purpose: '', areas: [], visitedGrow: '', unwell: '' };
+    Array.prototype.forEach.call(document.querySelectorAll('[aria-pressed]'), function (b) { b.setAttribute('aria-pressed', 'false'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.hint'), function (h) { h.hidden = true; });
+    Array.prototype.forEach.call($('rules').querySelectorAll('input'), function (cb) { cb.checked = false; cb.closest('li').classList.remove('done'); });
+    ticked = 0; updateRulesCount();
+    if (sig) sig.clear();
+    ['err-details', 'err-declarations', 'err-sign', 'err-signout'].forEach(function (id) { showError(id, []); });
+  }
+
+  // ---- QR poster ----------------------------------------------------------
+  function showPoster() {
+    $('qrUrl').textContent = appUrl;
+    try {
+      $('qr').innerHTML = qrToSvg(makeQR(appUrl), 4, 2);
+    } catch (err) {
+      $('qr').innerHTML = '<p class="error">The QR code could not be generated: ' + escapeHtml(err.message) + '</p>';
     }
+    go('qr');
   }
 
   // ---- start up -----------------------------------------------------------
-  function loadConfig() {
+  // The page paints straight away from the settings built into it, then quietly
+  // fetches the live settings (hosts, rules…) from the spreadsheet in the background.
+  var liveDone = false, liveFailed = false, livePromise = null;
+  function fetchLive() {
+    liveDone = false; liveFailed = false;
+    $('netNote').hidden = true;
+    livePromise = server('config').then(function (cfg) {
+      liveDone = true;
+      var v = currentView();
+      if (v === 'welcome' || v === 'loading' || v === '') render(cfg);   // not yet started: swap in the live lists
+      return cfg;
+    }).catch(function () {
+      liveDone = true; liveFailed = true;
+      if (currentView() === 'welcome') $('netNote').hidden = false;
+    });
+    return livePromise;
+  }
+  function start() {
+    var wait = (!liveDone && livePromise) ? Promise.race([livePromise, new Promise(function (r) { setTimeout(r, 8000); })]) : Promise.resolve();
+    if (!liveDone && livePromise) {
+      $('loadingMsg').textContent = 'Getting the latest sign-in form…';
+      $('btn-retry').hidden = true;
+      go('loading');
+    }
+    wait.then(function () { go('details'); });
+  }
+
+  bindOnce();
+  $('btn-start').addEventListener('click', start);
+  $('btn-retry').addEventListener('click', function () { fetchLive().then(function () { if (currentView() === 'loading') go('welcome'); }); });
+
+  if (APP.config) {
+    render(APP.config);
+    liveDone = true;
+    if (page === 'qr') showPoster(); else go('welcome');
+  } else if (APP.defaults) {
+    render(APP.defaults);
+    if (page === 'qr') { showPoster(); }
+    else { go('welcome'); fetchLive(); }
+  } else {
     $('loadingMsg').textContent = 'Loading the sign-in form…';
-    $('btn-retry').hidden = true;
     go('loading');
-    server('config').then(init).catch(function (err) {
-      $('loadingMsg').textContent = err.message;
-      $('btn-retry').hidden = false;
+    fetchLive().then(function () {
+      if (liveFailed) { $('loadingMsg').textContent = OFFLINE_MSG; $('btn-retry').hidden = false; }
+      else if (page === 'qr') showPoster(); else go('welcome');
     });
   }
-  $('btn-retry').addEventListener('click', loadConfig);
-  if (APP.siteName) { $('brand').textContent = APP.siteName; }
-  if (APP.config) init(APP.config);
-  else loadConfig();
 })();
 </script>
 </script>
